@@ -1,1 +1,1 @@
-# neuts_validation
+# Validation of NEUT vectors
