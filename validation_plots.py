@@ -24,7 +24,7 @@ class Compare:
         self.interactions = self.sort(np.unique(self.neut_hepmc1.interaction_mode))
 
         self.cmap = mpl.cm.get_cmap('rainbow')
-        self.nbins = int(2**np.log10(self.neut_hepmc1.N_EVENTS))
+        self.nbins = int(2**(np.log10(self.neut_hepmc1.N_EVENTS)+1))
 
         self.variables = [
             "neutrino_energy",
@@ -58,6 +58,22 @@ class Compare:
             "momentum_transfer": r"$q_3$ (MeV/c)",
             "energy_transfer": r"$q_0$ (MeV)",
             "interaction_mode": "Interaction mode"}
+        self.variable_scale = {
+            "neutrino_energy": True,
+            "neutrino_momentum": True,
+            "neutrino_px": True,
+            "neutrino_py": True,
+            "neutrino_pz": True,
+            "lepton_energy": True,
+            "lepton_momentum": True,
+            "lepton_px": True,
+            "lepton_py": True,
+            "lepton_pz": True,
+            "lepton_mass": True,
+            "cos_theta": True,
+            "momentum_transfer": True,
+            "energy_transfer": True,
+            "interaction_mode": True}
 
     def sort(self, array):
         array_pos = np.sort(array[array>0])
@@ -84,7 +100,7 @@ class Compare:
 
         return _fig, _plot, _distplot, _ratioplot
 
-    def split_distro_and_ratio(
+    def separated_distro_and_ratio(
             self,
             variable,
             show=False,
@@ -93,12 +109,12 @@ class Compare:
         data1, data2, = self.data_selector(variable)
         # cut1, cut2 = self.cutter(cut)
 
+        slice_length = 0
         if split:
             slice1, slice2, all_labels = self.slicer(split)
             x1 = []
             x2 = []
             labels = []
-            slice_length = 0
             for k, (s1, s2) in enumerate(zip(slice1, slice2)):
                 if np.sum(s1)>0 and np.sum(s2)>0:
                     x1.append(data1[s1])
@@ -109,40 +125,144 @@ class Compare:
             x1 = data1
             x2 = data2
 
+        colors = [mpl.colors.to_hex(self.cmap(x)) for x in np.linspace(0, 1, slice_length)]
+        custom_cycler = (cycler(color=colors))
+
+        for kk in range(slice_length):
+            fig, plot, distplot, ratioplot = self._distro_and_ratio()
+
+            values1, edges, __ = distplot.hist(
+                x1[kk], bins=self.nbins, label=labels[kk], histtype='step', linewidth=1)
+            values2, edges, __ = distplot.hist(
+                x2[kk], bins=edges, histtype='step', linestyle="dashed", linewidth=1)
+            centers = 0.5 * (edges[1:] + edges[:-1])
+            ratios = np.zeros_like(values1)
+            r_errors = np.zeros_like(values1)
+            ratios[(values2>0) & (values1>0)] = values1[(values2>0) & (values1>0)]/values2[(values2>0) & (values1>0)]
+            r_errors[(values2>0) & (values1>0)] = np.sqrt(1 / values1[(values2>0) & (values1>0)] + 1 / values2[(values2>0) & (values1>0)])
+            r_errors *= ratios
+
+            ratioplot.errorbar(
+                centers[ratios>0],
+                ratios[ratios>0],
+                yerr=r_errors[ratios>0],
+                fmt='o', markersize=1.5, elinewidth=1
+                )
+            ratioplot.hlines(1,
+                             edges[0],
+                             edges[-1],
+                             colors="k",
+                             linestyles="dotted",
+                             linewidths=0.5)
+            y0, y1 = ratioplot.get_ylim()
+            ratioplot.set_ylim(max(0.1, 1 - max(np.abs(1 - y0), np.abs(1 - y1))), 1 + max(np.abs(1 - y0), np.abs(1 - y1)))
+            ratioplot.set_xlabel(self.variable_titles[variable])
+            __, y1 = ratioplot.get_ylim()
+            if y1>2:
+                ratioplot.set_yscale("log")
+            distplot.legend(bbox_to_anchor=(1.05, 1), ncol=1, fontsize=10)
+            if self.variable_scale[variable]:
+                distplot.set_yscale("log")
+            fig.savefig("split_" + variable + "_" + str(split) + "_" + str(kk) + ".png")
+            if show:
+                plt.show()
+            plt.clf
+
+
+
+    def split_distro_and_ratio(
+            self,
+            variable,
+            show=False,
+            split=None,
+            cut=None):
+        data1, data2, = self.data_selector(variable)
+        # cut1, cut2 = self.cutter(cut)
+
+        slice_length = 0
+        if split:
+            slice1, slice2, all_labels = self.slicer(split)
+            x1 = []
+            x2 = []
+            labels = []
+            for k, (s1, s2) in enumerate(zip(slice1, slice2)):
+                if np.sum(s1)>0 and np.sum(s2)>0:
+                    x1.append(data1[s1])
+                    x2.append(data2[s2])
+                    labels.append(all_labels[k])
+                    slice_length += 1
+        else:
+            x1 = data1
+            x2 = data2
+        if slice_length <= 1:
+            x1 = data1
+            x2 = data2
+
         fig, plot, distplot, ratioplot = self._distro_and_ratio()
         colors = [mpl.colors.to_hex(self.cmap(x)) for x in np.linspace(0, 1, slice_length)]
         custom_cycler = (cycler(color=colors))
         distplot.set_prop_cycle(custom_cycler)
         ratioplot.set_prop_cycle(custom_cycler)
 
-        values1, edges, __ = distplot.hist(
-            x1, bins=self.nbins, label=labels, histtype='step', linewidth=2)
-        values2, edges, __ = distplot.hist(
-            x2, bins=edges, histtype='step', linestyle="dashed", linewidth=2)
-        centers = 0.5 * (edges[1:] + edges[:-1])
-        ratios = np.zeros_like(values1)
-        r_errors = np.zeros_like(values1)
-        ratios[(values2>0) & (values1>0)] = values1[(values2>0) & (values1>0)]/values2[(values2>0) & (values1>0)]
-        r_errors[(values2>0) & (values1>0)] = np.sqrt(1 / values1[(values2>0) & (values1>0)] + 1 / values2[(values2>0) & (values1>0)])
-        r_errors *= ratios
+        if slice_length == 1:
+            values1, edges, __ = distplot.hist(
+                x1, bins=self.nbins, label=labels, histtype='step', linewidth=1)
+            values2, edges, __ = distplot.hist(
+                x2, bins=edges, histtype='step', linestyle="dashed", linewidth=1)
+            centers = 0.5 * (edges[1:] + edges[:-1])
+            ratios = np.zeros_like(values1)
+            r_errors = np.zeros_like(values1)
+            ratios[(values2>0) & (values1>0)] = values1[(values2>0) & (values1>0)]/values2[(values2>0) & (values1>0)]
+            r_errors[(values2>0) & (values1>0)] = np.sqrt(1 / values1[(values2>0) & (values1>0)] + 1 / values2[(values2>0) & (values1>0)])
+            r_errors *= ratios
 
-        for ll in range(slice_length):
-            ratioplot.errorbar(
-                centers[ratios[ll,:]>0],
-                ratios[ll,:][ratios[ll,:]>0],
-                yerr=r_errors[ll,:][ratios[ll,:]>0],
-                fmt=".",
-                )
-        ratioplot.hlines(1,
-                         edges[0],
-                         edges[-1],
-                         colors="k",
-                         linestyles="dotted",
-                         linewidths=0.5)
+            for ll in range(slice_length):
+                ratioplot.errorbar(
+                    centers[ratios>0],
+                    ratios[ratios>0],
+                    yerr=r_errors[ratios>0],
+                    fmt='o', markersize=1.5, elinewidth=1
+                    )
+            ratioplot.hlines(1,
+                             edges[0],
+                             edges[-1],
+                             colors="k",
+                             linestyles="dotted",
+                             linewidths=0.5)
+        else:
+            values1, edges, __ = distplot.hist(
+                x1, bins=self.nbins, label=labels, histtype='step', linewidth=1)
+            values2, edges, __ = distplot.hist(
+                x2, bins=edges, histtype='step', linestyle="dashed", linewidth=1)
+            centers = 0.5 * (edges[1:] + edges[:-1])
+            ratios = np.zeros_like(values1)
+            r_errors = np.zeros_like(values1)
+            ratios[(values2>0) & (values1>0)] = values1[(values2>0) & (values1>0)]/values2[(values2>0) & (values1>0)]
+            r_errors[(values2>0) & (values1>0)] = np.sqrt(1 / values1[(values2>0) & (values1>0)] + 1 / values2[(values2>0) & (values1>0)])
+            r_errors *= ratios
+
+            for ll in range(slice_length):
+                ratioplot.errorbar(
+                    centers[ratios[ll,:]>0],
+                    ratios[ll,:][ratios[ll,:]>0],
+                    yerr=r_errors[ll,:][ratios[ll,:]>0],
+                    fmt='o', markersize=1.5, elinewidth=1
+                    )
+            ratioplot.hlines(1,
+                             edges[0],
+                             edges[-1],
+                             colors="k",
+                             linestyles="dotted",
+                             linewidths=0.5)
         y0, y1 = ratioplot.get_ylim()
-        ratioplot.set_ylim(max(0, 1 - max(np.abs(1 - y0), np.abs(1 - y1))), min(3, 1 + max(np.abs(1 - y0), np.abs(1 - y1))))
+        ratioplot.set_ylim(max(0.1, 1 - max(np.abs(1 - y0), np.abs(1 - y1))), min(5, 1 + max(np.abs(1 - y0), np.abs(1 - y1))))
         ratioplot.set_xlabel(self.variable_titles[variable])
+        __, y1 = ratioplot.get_ylim()
+        if y1>2:
+            ratioplot.set_yscale("log")
         distplot.legend(bbox_to_anchor=(1.05, 1), ncol=1, fontsize=10)
+        if self.variable_scale[variable]:
+            distplot.set_yscale("log")
         fig.savefig("split_" + variable + "_" + str(split) + ".png")
         if show:
             plt.show()
@@ -172,6 +292,9 @@ class Compare:
         else:
             x1 = data1
             x2 = data2
+        if slice_length == 1:
+            x1 = data1
+            x2 = data2
 
         fig, plot, distplot, ratioplot = self._distro_and_ratio()
         colors = [mpl.colors.to_hex(self.cmap(x)) for x in np.linspace(0, 1, slice_length)]
@@ -179,49 +302,58 @@ class Compare:
         distplot.set_prop_cycle(custom_cycler)
         ratioplot.set_prop_cycle(custom_cycler)
 
-        ratios = []
-        r_errors = []
-        for x, y in zip(x1, x2):
-            h1, edges = np.histogram(x, bins=self.nbins)
-            h2, __ = np.histogram(y, bins=edges)
-            rr = np.zeros_like(h1)
-            re = np.zeros_like(h1)
-            rr[(h2>0) & (h1>0)] = h1[(h2>0) & (h1>0)]/h2[(h2>0) & (h1>0)]
-            ratios.append(rr)
-            re[(h2>0) & (h1>0)] = np.sqrt(1 / h1[(h2>0) & (h1>0)] + 1 / h2[(h2>0) & (h1>0)])
-            r_errors.append(rr*re)
-        ratios = np.array(ratios)
-        r_errors = np.array(r_errors)
-        
+        if slice_length == 1:
+            self.split_distro_and_ratio(variable, show=show, split=split, cut=cut)
 
-        values1, edges, __ = distplot.hist(
-            x1, bins=self.nbins, label=labels, histtype='step', linewidth=2, stacked=True)
-        values2, edges, __ = distplot.hist(
-            x2, bins=edges, histtype='step', linestyle="dashed", linewidth=2, stacked=True)
-        centers = 0.5 * (edges[1:] + edges[:-1])
+        else:
+            ratios = []
+            r_errors = []
+            for x, y in zip(x1, x2):
+                h1, edges = np.histogram(x, bins=self.nbins)
+                h2, __ = np.histogram(y, bins=edges)
+                rr = np.zeros_like(h1)
+                re = np.zeros_like(h1)
+                rr[(h2>0) & (h1>0)] = h1[(h2>0) & (h1>0)]/h2[(h2>0) & (h1>0)]
+                ratios.append(rr)
+                re[(h2>0) & (h1>0)] = np.sqrt(1 / h1[(h2>0) & (h1>0)] + 1 / h2[(h2>0) & (h1>0)])
+                r_errors.append(rr*re)
+            ratios = np.array(ratios)
+            r_errors = np.array(r_errors)
+            
 
-        for ll in range(slice_length):
-            ratioplot.errorbar(
-                centers[ratios[ll,:]>0],
-                ratios[ll,:][ratios[ll,:]>0],
-                yerr=r_errors[ll,:][ratios[ll,:]>0],
-                fmt=".",
-                )
-        ratioplot.hlines(1,
-                         edges[0],
-                         edges[-1],
-                         colors="k",
-                         linestyles="dotted",
-                         linewidths=0.5)
+            values1, edges, __ = distplot.hist(
+                x1, bins=self.nbins, label=labels, histtype='step', linewidth=1, stacked=True)
+            values2, edges, __ = distplot.hist(
+                x2, bins=edges, histtype='step', linestyle="dashed", linewidth=1, stacked=True)
+            centers = 0.5 * (edges[1:] + edges[:-1])
+
+            for ll in range(slice_length):
+                ratioplot.errorbar(
+                    centers[ratios[ll,:]>0],
+                    ratios[ll,:][ratios[ll,:]>0],
+                    yerr=r_errors[ll,:][ratios[ll,:]>0],
+                    fmt='o', markersize=1.5, elinewidth=1
+                    )
+            ratioplot.hlines(1,
+                             edges[0],
+                             edges[-1],
+                             colors="k",
+                             linestyles="dotted",
+                             linewidths=0.5)
         y0, y1 = ratioplot.get_ylim()
-        ratioplot.set_ylim(1 - max(np.abs(1 - y0), np.abs(1 - y1)), 1 + max(np.abs(1 - y0), np.abs(1 - y1)))
-        ratioplot.set_ylim(1 - 0.2, 1 + 0.2)
+        ratioplot.set_ylim(max(0.1, 1 - max(np.abs(1 - y0), np.abs(1 - y1))), min(5,1 + max(np.abs(1 - y0), np.abs(1 - y1))))
         ratioplot.set_xlabel(self.variable_titles[variable])
+        __, y1 = ratioplot.get_ylim()
+        if y1>2:
+            ratioplot.set_yscale("log")
         distplot.legend(bbox_to_anchor=(1.05, 1), ncol=1, fontsize=10)
+        if self.variable_scale[variable]:
+            distplot.set_yscale("log")
         fig.savefig("split_" + variable + "_" + str(split) + ".png")
         if show:
             plt.show()
         plt.clf
+
     def norm_distro_and_ratio(self):
         pass
 
@@ -260,6 +392,32 @@ class Compare:
                 _slice1 += [self.neut_hepmc1.interaction_mode == mode]
                 _slice2 += [self.neut_hepmc2.interaction_mode == mode]
                 _labels += [nu + self.interaction_mode_labels[mode]]
+        elif split == 'CC-interactions':
+            _slice1 = []
+            _slice2 = []
+            _labels = []
+            for mode in self.interactions:
+                if np.abs(mode) < 27:
+                    if mode > 0:
+                        nu = r'$\nu$ '
+                    else:
+                        nu = r'$\overline{\nu}$ '
+                    _slice1 += [self.neut_hepmc1.interaction_mode == mode]
+                    _slice2 += [self.neut_hepmc2.interaction_mode == mode]
+                    _labels += [nu + self.interaction_mode_labels[mode]]
+        elif split == 'NC-interactions':
+            _slice1 = []
+            _slice2 = []
+            _labels = []
+            for mode in self.interactions:
+                if np.abs(mode) > 27:
+                    if mode > 0:
+                        nu = r'$\nu$ '
+                    else:
+                        nu = r'$\overline{\nu}$ '
+                    _slice1 += [self.neut_hepmc1.interaction_mode == mode]
+                    _slice2 += [self.neut_hepmc2.interaction_mode == mode]
+                    _labels += [nu + self.interaction_mode_labels[mode]]
         # elif split == 'both':
         #     _energy = []
         #     _px = []

@@ -2,6 +2,7 @@ import pyhepmc
 import numpy as np
 from particle import literals as lp
 from pyhepmc.view import to_dot
+import matplotlib.pyplot as plt
 from pyhepmc.view import savefig
 from itertools import repeat
 import inspect
@@ -102,6 +103,9 @@ class NuHepMC:
         #     self.momentum_transfer[i] = a - b
         self.momentum_transfer = self.neutrino_momentum - \
             self.lepton_momentum * self.cos_theta
+        # plt.hist(self.momentum_transfer, bins=100)
+        # plt.show()
+        # plt.clf
 
     def get_cos_theta(self):
         self.cos_theta = (
@@ -123,11 +127,35 @@ class NuHepMC:
                                   self.lepton_py +
                                   self.lepton_pz *
                                   self.lepton_pz)
+        # plt.hist(self.cos_theta, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.neutrino_px, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.neutrino_py, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.neutrino_pz, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.lepton_px, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.lepton_py, bins=100)
+        # plt.show()
+        # plt.clf
+        # plt.hist(self.lepton_pz, bins=100)
+        # plt.show()
+        # plt.clf
 
     def add_event(self, index, event, item):
         print(f'Adding variables for {item}')
         if item == 'neutrinos':
             p = event.numpy.particles
+            # print(f"particle status: {p.status}")
+            # print(f"particle id: {p.id}")
+            # print(f"particle pid: {p.pid}")
             ma = p.status == 4
             ma &= self._matching(p.pid, self.neutrinos_pid)
             _e = p.e
@@ -146,7 +174,10 @@ class NuHepMC:
 
         elif item == 'leptons':
             p = event.numpy.particles
-            ma = p.id == 4
+            if self.NEUT5:
+                ma = p.id == 5
+            else:
+                ma = p.id == 4
             _e = p.e
             _px = p.px
             _py = p.py
