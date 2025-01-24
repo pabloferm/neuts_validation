@@ -21,7 +21,7 @@ class NuHepMC:
             self.N_EVENTS = 10000
 
         self.neutrinos_pid = [-16, -14, -12, 12, 14, 16]
-        self.charged_leptons_pid = [-15, -13, -11, 11, 12, 15]
+        self.charged_leptons_pid = [-15, -13, -11, 11, 13, 15]
         self.leptons_pid = self.neutrinos_pid + self.charged_leptons_pid
 
         self.interaction_mode_labels = {
@@ -77,6 +77,8 @@ class NuHepMC:
         self.lepton_pz = np.zeros(self.N_EVENTS)
         self.lepton_mass = np.zeros(self.N_EVENTS)
 
+        self.skip = np.zeros(self.N_EVENTS)
+
     def get_variables(self, *particles):
         for i, event in enumerate(self.NUHEPMC):
             if i == self.N_EVENTS:
@@ -88,24 +90,41 @@ class NuHepMC:
             self.add_event(i, event, 'interaction_mode')
             print('==============================\n')
 
+        cut = np.logical_not(self.skip)
+        self.neutrino_pdg = self.neutrino_pdg[cut]
+        self.neutrino_energy = self.neutrino_energy[cut]
+        self.neutrino_momentum = self.neutrino_momentum[cut]
+        self.neutrino_px = self.neutrino_px[cut]
+        self.neutrino_py = self.neutrino_py[cut]
+        self.neutrino_pz = self.neutrino_pz[cut]
+        self.neutrino_mass = self.neutrino_mass[cut]
+
+        self.interaction_mode = self.interaction_mode[cut]
+
+        self.lepton_pdg = self.lepton_pdg[cut]
+        self.lepton_energy = self.lepton_energy[cut]
+        self.lepton_momentum = self.lepton_momentum[cut]
+        self.lepton_px = self.lepton_px[cut]
+        self.lepton_py = self.lepton_py[cut]
+        self.lepton_pz = self.lepton_pz[cut]
+        self.lepton_mass = self.lepton_mass[cut]
+
         if 'neutrinos' in particles and 'leptons' in particles:
             print(r'Computing kinematics')
             self.get_cos_theta()
+            self.cos_theta = self.cos_theta
             self.get_energy_transfer()
+            self.energy_transfer = self.energy_transfer
             self.get_momentum_transfer()
+            self.momentum_transfer = self.momentum_transfer
+
 
     def get_energy_transfer(self):
         self.energy_transfer = self.neutrino_energy - self.lepton_energy
 
     def get_momentum_transfer(self):
-        # self.momentum_transfer = np.zeros_like(self.neutrino_px)
-        # for i, (a, b,) in enumerate(zip(self.neutrino_pz, self.lepton_pz)):
-        #     self.momentum_transfer[i] = a - b
         self.momentum_transfer = self.neutrino_momentum - \
             self.lepton_momentum * self.cos_theta
-        # plt.hist(self.momentum_transfer, bins=100)
-        # plt.show()
-        # plt.clf
 
     def get_cos_theta(self):
         self.cos_theta = (
@@ -127,27 +146,6 @@ class NuHepMC:
                                   self.lepton_py +
                                   self.lepton_pz *
                                   self.lepton_pz)
-        # plt.hist(self.cos_theta, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.neutrino_px, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.neutrino_py, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.neutrino_pz, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.lepton_px, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.lepton_py, bins=100)
-        # plt.show()
-        # plt.clf
-        # plt.hist(self.lepton_pz, bins=100)
-        # plt.show()
-        # plt.clf
 
     def add_event(self, index, event, item):
         print(f'Adding variables for {item}')
@@ -174,23 +172,23 @@ class NuHepMC:
 
         elif item == 'leptons':
             p = event.numpy.particles
-            if self.NEUT5:
-                ma = p.id == 5
+            ma = (p.status == 1) & ([x in self.leptons_pid for x in p.pid])
+            if not np.any(ma):
+                self.skip[index] = 1
             else:
-                ma = p.id == 4
-            _e = p.e
-            _px = p.px
-            _py = p.py
-            _pz = p.pz
-            _pid = p.pid
-            _mass = p.generated_mass
-            self.lepton_energy[index] = _e[ma]
-            self.lepton_px[index] = _px[ma]
-            self.lepton_py[index] = _py[ma]
-            self.lepton_pz[index] = _pz[ma]
-            self.lepton_pdg[index] = _pid[ma]
-            self.lepton_mass[index] = _mass[ma]
-            self.lepton_momentum[index] = np.sqrt(_e[ma]**2 - _mass[ma]**2)
+                _e = p.e
+                _px = p.px
+                _py = p.py
+                _pz = p.pz
+                _pid = p.pid
+                _mass = p.generated_mass
+                self.lepton_energy[index] = _e[ma]
+                self.lepton_px[index] = _px[ma]
+                self.lepton_py[index] = _py[ma]
+                self.lepton_pz[index] = _pz[ma]
+                self.lepton_pdg[index] = _pid[ma]
+                self.lepton_mass[index] = _mass[ma]
+                self.lepton_momentum[index] = np.sqrt(_e[ma]**2 - _mass[ma]**2)
 
         elif item == 'interaction_mode':
             if self.NEUT5:
